@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ピンイン道場</title>
+<meta name="description" content="日本語を見て、中国語をピンイン入力か発音で答える HSK 単語練習。">
+<meta name="theme-color" content="#eef1f6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101319" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ピンイン道場">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- ホーム -->
+  <section class="screen" id="home">
+    <header class="brand"><h1>ピンイン道場</h1><span>pīnyīn</span></header>
+    <p class="lead">日本語を見て、中国語で答えよう。ピンインを入力するか、声に出して答えます。</p>
+
+    <div class="group">
+      <div class="group-label">答え方</div>
+      <div class="seg" id="modeHome">
+        <button type="button" data-mode="type" aria-pressed="true">⌨️ 入力で答える</button>
+        <button type="button" data-mode="voice" aria-pressed="false">🎤 発音で答える</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-label">1回の問題数</div>
+      <div class="seg" id="sizeSeg">
+        <button type="button" data-size="20" aria-pressed="true">20問</button>
+        <button type="button" data-size="30" aria-pressed="false">30問</button>
+      </div>
+    </div>
+
+    <div class="setting" id="toneSetting">
+      <div>声調も判定する<small>オフにすると綴りだけで正解になります（入力のとき）</small></div>
+      <label class="toggle"><input type="checkbox" id="optTone" checked aria-label="声調も判定する"><span></span></label>
+    </div>
+
+    <div class="group">
+      <div class="group-label">レベルを選ぶ（HSK）</div>
+      <div class="levels" id="levels"></div>
+    </div>
+
+    <p class="footnote">
+      HSK（旧6級制）の各級で新しく覚える単語から、毎回ランダムに出題します。間違えた単語は、正解できるまで出やすくなります。学習の記録はこの端末のブラウザだけに保存されます。<br>
+      語彙リスト：<a href="https://github.com/drkameleon/complete-hsk-vocabulary" target="_blank" rel="noopener">complete-hsk-vocabulary</a>（MIT License）、元データ <a href="https://cc-cedict.org/" target="_blank" rel="noopener">CC-CEDICT</a>（CC BY-SA 4.0）。日本語訳は本サイト独自のものです。
+    </p>
+  </section>
+
+  <!-- 問題 -->
+  <section class="screen" id="quiz" hidden>
+    <div class="topbar">
+      <button type="button" class="icon-btn" id="quitBtn" aria-label="やめる">✕</button>
+      <div class="progress"><div id="bar"></div></div>
+      <div class="count" id="count">1/20</div>
+    </div>
+
+    <div class="meta">
+      <span class="chips">
+        <span class="chip" id="levelChip">HSK 1級</span>
+        <span class="chip chip-review" id="reviewChip" hidden>復習</span>
+      </span>
+      <div class="seg small" id="modeQuiz">
+        <button type="button" data-mode="type" aria-pressed="true">入力</button>
+        <button type="button" data-mode="voice" aria-pressed="false">発音</button>
+      </div>
+    </div>
+
+    <div class="prompt-label" id="promptLabel">中国語のピンインで答えてください</div>
+    <div class="question" id="question"></div>
+    <div class="hint"><span class="hz" id="hintHz"></span><span class="py" id="hintPy"></span></div>
+
+    <div id="typePanel">
+      <input class="input" id="answer" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="例：ni3hao3" aria-label="ピンイン">
+      <div class="preview" id="preview"></div>
+      <div class="help">数字で声調を入力できます（ni3hao3 → nǐhǎo）。ü は v で入力。軽声は数字なし・0・5 のどれでも可。</div>
+      <div class="tones" id="tones">
+        <button type="button" data-t="1"><b>ā</b><small>1声</small></button>
+        <button type="button" data-t="2"><b>á</b><small>2声</small></button>
+        <button type="button" data-t="3"><b>ǎ</b><small>3声</small></button>
+        <button type="button" data-t="4"><b>à</b><small>4声</small></button>
+        <button type="button" data-t="v"><b>ü</b><small>ü</small></button>
+      </div>
+    </div>
+
+    <div id="voicePanel" class="voice" hidden>
+      <button type="button" class="mic" id="micBtn" aria-label="話す">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4"/></svg>
+      </button>
+      <div class="mic-state" id="micState">タップして中国語で話してください</div>
+      <div class="heard" id="heard"></div>
+      <div class="voice-note" id="voiceNote" hidden></div>
+    </div>
+
+    <div class="sub-actions">
+      <button type="button" class="link" id="hintBtn">ヒントを見る（漢字）</button>
+      <button type="button" class="link" id="skipBtn">わからない</button>
+    </div>
+
+    <div class="spacer"></div>
+    <button type="button" class="btn btn-primary" id="checkBtn" disabled>答え合わせ</button>
+  </section>
+
+  <!-- 結果 -->
+  <section class="screen" id="result" hidden>
+    <div class="result-head">
+      <div class="result-level" id="resultLevel">HSK 1級</div>
+      <div class="result-score" id="score">0<small> / 0</small></div>
+      <div class="result-msg" id="resultMsg"></div>
+    </div>
+    <div class="group-label">ふりかえり</div>
+    <ul class="review" id="review"></ul>
+    <div class="result-actions">
+      <button type="button" class="btn btn-primary" id="continueBtn">続ける（次の20問）</button>
+      <button type="button" class="btn btn-secondary" id="retryMissBtn">間違えた単語をもう一度</button>
+      <button type="button" class="btn btn-ghost" id="homeBtn">レベル選択へ戻る</button>
+    </div>
+  </section>
+</div>
+
+<!-- 判定シート -->
+<div class="sheet" id="sheet" aria-live="polite">
+  <div class="sheet-inner">
+    <div class="fb-title" id="fbTitle"></div>
+    <div class="fb-answer">
+      <span class="fb-hanzi" id="fbHanzi"></span>
+      <span class="fb-pinyin" id="fbPinyin"></span>
+      <button type="button" class="speak" id="speakBtn" aria-label="発音を聞く">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg>
+      </button>
+    </div>
+    <div class="fb-ja" id="fbJa"></div>
+    <div class="fb-yours" id="fbYours"></div>
+    <div class="fb-note" id="fbNote"></div>
+    <button type="button" class="btn" id="nextBtn">次へ</button>
+  </div>
+</div>
+
+<script src="words.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

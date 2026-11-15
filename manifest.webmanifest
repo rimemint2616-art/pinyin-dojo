@@ -1,0 +1,16 @@
+{
+  "name": "ピンイン道場",
+  "short_name": "ピンイン道場",
+  "description": "日本語を見て、中国語をピンイン入力か発音で答える HSK 単語練習",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#eef1f6",
+  "theme_color": "#2f45b5",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

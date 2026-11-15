@@ -21,7 +21,13 @@
   <!-- ホーム -->
   <section class="screen" id="home">
     <header class="brand"><h1>ピンイン道場</h1><span>pīnyīn</span></header>
-    <p class="lead">日本語を見て、中国語で答えよう。ピンインを入力するか、声に出して答えます。</p>
+    <div class="stage">
+      <div class="chara-wrap"><div class="chara" id="charaHome" data-mood="happy"></div></div>
+      <div class="bubble">
+        <div class="say-zh">一起学习吧！</div>
+        <div class="say-ja">一緒に勉強しよう！日本語を見て、中国語で答えてね。ピンインを入力しても、声に出しても OK。</div>
+      </div>
+    </div>
 
     <div class="group">
       <div class="group-label">答え方</div>
@@ -74,8 +80,16 @@
       </div>
     </div>
 
-    <div class="prompt-label" id="promptLabel">中国語のピンインで答えてください</div>
-    <div class="question" id="question"></div>
+    <div class="stage">
+      <div class="chara-wrap">
+        <div class="chara" id="charaQuiz" data-mood="normal"></div>
+        <div class="react" id="react" hidden></div>
+      </div>
+      <div class="bubble">
+        <div class="prompt-label" id="promptLabel">中国語のピンインで答えてください</div>
+        <div class="question" id="question"></div>
+      </div>
+    </div>
     <div class="hint"><span class="hz" id="hintHz"></span><span class="py" id="hintPy"></span></div>
 
     <div id="typePanel">
@@ -111,10 +125,13 @@
 
   <!-- 結果 -->
   <section class="screen" id="result" hidden>
+    <div class="stage result-stage">
+      <div class="chara-wrap"><div class="chara" id="charaResult" data-mood="happy"></div></div>
+      <div class="bubble"><div class="say-zh" id="resultZh"></div><div class="say-ja" id="resultJa"></div></div>
+    </div>
     <div class="result-head">
       <div class="result-level" id="resultLevel">HSK 1級</div>
       <div class="result-score" id="score">0<small> / 0</small></div>
-      <div class="result-msg" id="resultMsg"></div>
     </div>
     <div class="group-label">ふりかえり</div>
     <ul class="review" id="review"></ul>
@@ -145,6 +162,7 @@
 </div>
 
 <script src="words.js"></script>
+<script src="chara.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

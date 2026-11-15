@@ -111,6 +111,7 @@ let size = settings.size === 30 ? 30 : 20;
 $("optTone").checked = settings.tone !== false;
 let level = LEVELS[0];
 let deck = [], pos = 0, results = [], hintStep = 0, answered = false;
+let streak = 0, missStreak = 0; // 連続正解・連続不正解（キャラクターの反応に使う）
 
 function saveSettings() { store.set("settings", { mode, size, tone: $("optTone").checked }); }
 
@@ -170,7 +171,7 @@ $("optTone").addEventListener("change", saveSettings);
 // ===== 問題 =====
 function startSession(customDeck) {
   deck = customDeck || drawDeck(level, size);
-  pos = 0; results = [];
+  pos = 0; results = []; streak = 0; missStreak = 0;
   $("levelChip").textContent = `HSK ${level.lv}級`;
   showScreen("quiz");
   render();
@@ -191,6 +192,8 @@ function render() {
   $("voiceNote").hidden = true;
   $("micBtn").disabled = false;
   $("sheet").classList.remove("show", "ok", "ng");
+  $("react").hidden = true;
+  setMood($("charaQuiz"), "normal");
   updatePreview();
   renderMode();
 }
@@ -263,7 +266,24 @@ function finish(how, input, r) {
   $("sheet").classList.remove("ok", "ng");
   $("sheet").classList.add("show", r.ok ? "ok" : "ng");
   $("nextBtn").focus({ preventScroll: true });
+  react(how, r.ok);
   if (how !== "voice") speak(q.hanzi);
+}
+
+// 正解でにっこり、不正解でがっかり。続けて間違えたり「わからない」だと怒る
+function react(how, ok) {
+  let mood, line;
+  if (ok) { streak++; missStreak = 0; mood = streak >= 3 ? "joy" : "happy"; line = pickLine(mood === "joy" ? "joy" : "happy"); }
+  else {
+    streak = 0; missStreak++;
+    mood = how === "skip" || missStreak >= 2 ? "angry" : "sad";
+    line = pickLine(how === "skip" ? "skip" : mood);
+  }
+  setMood($("charaQuiz"), mood);
+  const el = $("react");
+  el.className = "react" + (ok ? "" : " ng");
+  el.innerHTML = `${esc(line[0])}<small>${esc(line[1])}</small>`;
+  el.hidden = false;
 }
 
 function next() {
@@ -277,7 +297,14 @@ function showResult() {
   $("resultLevel").textContent = `HSK ${level.lv}級　${level.name}`;
   $("score").innerHTML = `${n}<small> / ${results.length}</small>`;
   const rate = n / results.length;
-  $("resultMsg").textContent = rate === 1 ? "全問正解！すばらしい！" : rate >= 0.8 ? "よくできました！" : rate >= 0.5 ? "その調子！" : "繰り返して覚えましょう";
+  const [mood, zh, ja] =
+    rate === 1 ? ["joy", "全对！太厉害了！", "全問正解！すばらしい！"] :
+    rate >= 0.8 ? ["happy", "做得很好！", "よくできました！"] :
+    rate >= 0.5 ? ["normal", "继续加油！", "その調子！間違えた単語はまた出すからね。"] :
+    rate >= 0.2 ? ["sad", "再复习一下吧…", "もう一度復習しようか…"] :
+                  ["angry", "要好好学习！", "しっかり勉強しなさい！"];
+  $("resultZh").textContent = zh; $("resultJa").textContent = ja;
+  requestAnimationFrame(() => setMood($("charaResult"), mood));
   $("review").innerHTML = results.map((r) => `
     <li>
       <div class="main"><div>${esc(r.q.hanzi)}　${esc(r.q.answers[0])}</div>
@@ -346,7 +373,7 @@ function startListening() {
   let errCode = "";
   rec = new Recognition();
   rec.lang = "zh-CN"; rec.interimResults = true; rec.maxAlternatives = 5; rec.continuous = false;
-  rec.onstart = () => setMicUi("listening");
+  rec.onstart = () => { setMicUi("listening"); setMood($("charaQuiz"), "listen"); };
   rec.onresult = (e) => {
     let interim = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -383,6 +410,7 @@ function onListenEnd(reason) {
   if (!listening) return;
   listening = false; rec = null;
   setMicUi("idle");
+  if ($("charaQuiz").dataset.mood === "listen") setMood($("charaQuiz"), "normal");
   if (answered) return;
   const text = buf.join("").trim();
   if (text) { finish("voice", text, judgeVoice(text, alts)); return; }

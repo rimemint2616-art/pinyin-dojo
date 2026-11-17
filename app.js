@@ -205,7 +205,7 @@ function renderMode() {
   $("checkBtn").hidden = voice;
   $("promptLabel").textContent = voice ? "中国語で発音してください" : "中国語のピンインで答えてください";
   if (voice) { $("answer").blur(); refreshMic(); }
-  else { if (listening) stopListening(); $("answer").focus({ preventScroll: true }); }
+  else { if (listening) endListening(); $("answer").focus({ preventScroll: true }); }
 }
 
 function updatePreview() {
@@ -234,11 +234,55 @@ function judgeTyped(raw) {
   return { ok: false, note: "" };
 }
 
+// ===== 発音の判定 =====
+// 音声認識は漢字で返ってくるので、ピンインに直して比べる（同音の別の字に聞き取られても正解にできる）
+// 単語1つの発音では声調の聞き取りが不安定なため、音（声調抜き）が合えば正解にし、声調の違いは添え書きにとどめる
+const ZH_DIGITS = "零一二三四五六七八九";
+function numToZh(n) {
+  if (n < 10) return ZH_DIGITS[n];
+  if (n < 20) return "十" + (n % 10 ? ZH_DIGITS[n % 10] : "");
+  if (n < 100) return ZH_DIGITS[Math.floor(n / 10)] + "十" + (n % 10 ? ZH_DIGITS[n % 10] : "");
+  return String(n).split("").map((d) => ZH_DIGITS[d]).join("");
+}
+const digitsToZh = (s) => s.replace(/\d+/g, (d) => numToZh(Number(d)));
+
+function heardPinyin(text) {
+  const P = window.pinyinPro;
+  if (!P) return "";
+  try {
+    return P.pinyin(digitsToZh(normZh(text)), { toneType: "symbol", type: "array", nonZh: "removed" }).join(" ");
+  } catch { return ""; }
+}
+
+function matchVoice(text, q) {
+  const hz = normZh(digitsToZh(text));
+  if (!hz) return null;
+  if ([q.hanzi, ...q.alt].map(normZh).some((t) => hz === t || hz.includes(t))) return { ok: true, tone: true, py: heardPinyin(text) };
+  const py = heardPinyin(text);
+  if (!py) return null;
+  const heard = compact(py), heardBare = stripTones(heard);
+  // 語尾の「儿」（r化）は認識で落ちやすいので、r なしでも認める
+  const variants = q.answers.flatMap((a) => q.hanzi.endsWith("儿") ? [a, a.replace(/r$/, "")] : [a]);
+  for (const a of variants) {
+    const ans = compact(a);
+    if (heard.includes(ans)) return { ok: true, tone: true, py };
+    if (heardBare.includes(stripTones(ans))) return { ok: true, tone: false, py };
+  }
+  return { ok: false, py };
+}
+
 function judgeVoice(text, alts) {
   const q = deck[pos];
-  const targets = [q.hanzi, ...q.alt].map(normZh);
-  const ok = [text, ...alts].map(normZh).some((c) => targets.includes(c));
-  return { ok, note: ok ? "" : "聞き取られた中国語が正解と違いました。お手本を聞いてみましょう" };
+  let best = null;
+  for (const c of [text, ...alts]) {
+    const m = matchVoice(c, q);
+    if (m?.ok && m.tone) { best = m; break; }
+    if (m?.ok && !best?.ok) best = m;
+    if (!best) best = m;
+  }
+  const py = best?.py || heardPinyin(text);
+  if (best?.ok) return { ok: true, py, note: best.tone ? "" : `声調が「${py}」に聞こえたかも。お手本で確認しよう` };
+  return { ok: false, py, note: "正解とは違う音に聞こえました。お手本を聞いてみましょう" };
 }
 
 // how: "type" | "voice" | "skip"
@@ -259,7 +303,7 @@ function finish(how, input, r) {
   $("fbPinyin").textContent = q.answers.join(" / ");
   $("fbJa").textContent = q.ja;
   $("fbYours").innerHTML =
-    how === "voice" ? `聞き取り結果：<span class="${r.ok ? "" : "bad"}">${esc(input)}</span>`
+    how === "voice" ? `聞き取り結果：<span class="${r.ok ? "" : "bad"}">${esc(input)}${r.py ? `（${esc(r.py)}）` : ""}</span>`
     : how === "type" && !r.ok ? `あなたの答え：<span class="bad">${esc(input)}</span>` : "";
   $("fbNote").textContent = r.ok ? r.note : [r.note, "この単語は、しばらく出やすくなります"].filter(Boolean).join("。");
   $("nextBtn").textContent = pos + 1 < deck.length ? "次へ" : "結果を見る";
@@ -335,7 +379,9 @@ if (!("speechSynthesis" in window)) $("speakBtn").hidden = true;
 // ===== 発音で答える（ブラウザ標準の音声認識） =====
 // Chrome（PC・Android）、iPhone/iPad の Safari（iOS 14.5 以降）で使える。https で開く必要がある
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-let listening = false, rec = null, buf = [], alts = [];
+const SILENCE_MS = 1200;  // 何か聞き取れた後、これだけ声が途切れたら自動で終える
+const MAX_LISTEN_MS = 8000;
+let listening = false, rec = null, buf = [], alts = [], interimText = "", silenceTimer = 0, maxTimer = 0;
 
 function refreshMic() {
   if (listening) return;
@@ -352,71 +398,97 @@ function refreshMic() {
 
 function setMicUi(state) {
   $("micBtn").classList.toggle("listening", state === "listening");
-  $("micBtn").setAttribute("aria-label", state === "listening" ? "話し終えた" : "話す");
+  $("micBtn").setAttribute("aria-label", state === "listening" ? "やめる" : "話す");
   $("micState").textContent =
     state === "starting" ? "準備しています…" :
-    state === "listening" ? "聞いています…話し終えたらもう一度タップ" :
+    state === "listening" ? "聞いています…はっきり言ってみて" :
     "タップして中国語で話してください";
 }
 
 function showHeard(text, partial) {
-  $("heard").textContent = text;
+  const py = text ? heardPinyin(text) : "";
+  $("heard").textContent = text ? (py ? `${text}（${py}）` : text) : "";
   $("heard").classList.toggle("partial", partial);
 }
 
+function clearTimers() { clearTimeout(silenceTimer); clearTimeout(maxTimer); }
+
 function startListening() {
-  buf = []; alts = [];
+  buf = []; alts = []; interimText = "";
   showHeard("", false);
   $("voiceNote").hidden = true;
   listening = true;
   setMicUi("starting");
   let errCode = "";
-  rec = new Recognition();
-  rec.lang = "zh-CN"; rec.interimResults = true; rec.maxAlternatives = 5; rec.continuous = false;
-  rec.onstart = () => { setMicUi("listening"); setMood($("charaQuiz"), "listen"); };
-  rec.onresult = (e) => {
-    let interim = "";
+  const r0 = new Recognition();
+  rec = r0;
+  r0.lang = "zh-CN"; r0.interimResults = true; r0.maxAlternatives = 5; r0.continuous = false;
+  r0.onstart = () => {
+    if (rec !== r0) return;
+    setMicUi("listening"); setMood($("charaQuiz"), "listen");
+    maxTimer = setTimeout(stopListening, MAX_LISTEN_MS);
+  };
+  r0.onresult = (e) => {
+    if (rec !== r0 || answered) return;
+    interimText = "";
+    const fresh = [];
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const r = e.results[i];
       if (r.isFinal) { buf.push(r[0].transcript); for (let j = 1; j < r.length; j++) alts.push(r[j].transcript); }
-      else interim += r[0].transcript;
+      else interimText += r[0].transcript;
+      for (let j = 0; j < r.length; j++) fresh.push(r[j].transcript);
     }
-    showHeard(buf.join("") + interim, !!interim);
+    const text = (buf.join("") + interimText).trim();
+    showHeard(text, !!interimText);
+    // 正解が聞こえた時点ですぐ判定する（話し終わりを待たない）
+    if (deck[pos] && [text, ...fresh].some((t) => matchVoice(t, deck[pos])?.ok)) {
+      const res = judgeVoice(text, [...fresh, ...alts]);
+      endListening();
+      finish("voice", text, res);
+      return;
+    }
+    clearTimeout(silenceTimer);
+    if (text) silenceTimer = setTimeout(stopListening, SILENCE_MS);
   };
-  rec.onerror = (e) => { errCode = e.error; };
-  rec.onend = () => onListenEnd(errCode);
-  try { rec.start(); } catch { onListenEnd("start-failed"); }
+  r0.onerror = (e) => { errCode = e.error; };
+  r0.onend = () => { if (rec === r0) onListenEnd(errCode); };
+  try { r0.start(); } catch { onListenEnd("start-failed"); }
 }
 
 function stopListening() {
+  clearTimers();
   if (rec) try { rec.stop(); } catch {}
 }
-function abortListening() {
-  listening = false;
-  if (rec) try { rec.abort(); } catch {}
-  rec = null;
+// 認識を捨てて、画面を待機の状態に戻す
+function endListening() {
+  clearTimers();
+  const r = rec;
+  listening = false; rec = null;
+  if (r) try { r.abort(); } catch {}
+  setMicUi("idle");
+  if ($("charaQuiz").dataset.mood === "listen") setMood($("charaQuiz"), "normal");
 }
+const abortListening = endListening;
 
 const VOICE_ERRORS = {
   "not-allowed": "マイクが許可されていません。ブラウザの設定でマイクを許可するか、入力で答えてください。",
-  "service-not-allowed": "この端末では音声認識が使えません。入力で答えてください。",
+  "service-not-allowed": "この端末では音声認識が使えません。iPhone は「設定 > 一般 > キーボード > 音声入力」をオンにしてください。",
   "language-not-supported": "この端末では中国語の音声認識が使えません。入力で答えてください。",
   "audio-capture": "マイクが見つかりません。",
   "network": "音声認識に接続できませんでした。通信状況を確認してください。",
-  "no-speech": "聞き取れませんでした。もう一度どうぞ。",
+  "no-speech": "聞き取れませんでした。マイクに近づいて、もう一度どうぞ。",
 };
 
 function onListenEnd(reason) {
   if (!listening) return;
-  listening = false; rec = null;
-  setMicUi("idle");
-  if ($("charaQuiz").dataset.mood === "listen") setMood($("charaQuiz"), "normal");
+  // iPhone では確定結果が来ないまま終わることがあるので、途中の結果も使う
+  const text = (buf.join("") + interimText).trim();
+  endListening();
   if (answered) return;
-  const text = buf.join("").trim();
   if (text) { finish("voice", text, judgeVoice(text, alts)); return; }
   showHeard("", false);
-  const msg = VOICE_ERRORS[reason] || (reason && reason !== "aborted" ? "うまく聞き取れませんでした。もう一度どうぞ。" : "");
-  if (msg) { $("voiceNote").textContent = msg; $("voiceNote").hidden = false; }
+  const msg = VOICE_ERRORS[reason] || (reason && reason !== "aborted" ? "うまく聞き取れませんでした。もう一度どうぞ。" : "聞き取れませんでした。もう一度どうぞ。");
+  $("voiceNote").textContent = msg; $("voiceNote").hidden = false;
 }
 
 $("micBtn").addEventListener("click", () => {

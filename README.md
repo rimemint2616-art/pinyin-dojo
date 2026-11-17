@@ -6,6 +6,7 @@
 - 1回20問か30問。毎回ランダムに出題し、一巡するまで同じ単語は出ない
 - 間違えた単語は重みが付き、正解を重ねるまで出やすくなる（記録は端末のブラウザ内）
 - 発音での回答はブラウザ標準の音声認識（Chrome、iOS 14.5 以降の Safari）。**https で開く必要がある**
+- 発音は、聞き取った漢字をピンインに直して判定する（同音の別字・算用数字・r化の脱落も正解。声調の違いは添え書きのみ）
 
 ## ファイル
 
@@ -31,4 +32,4 @@ python3 -m http.server 8000
 
 ## クレジット
 
-語彙リスト：[complete-hsk-vocabulary](https://github.com/drkameleon/complete-hsk-vocabulary)（MIT License）、元データ [CC-CEDICT](https://cc-cedict.org/)（CC BY-SA 4.0）。日本語の問題文は本サイトで作成。
+語彙リスト：[complete-hsk-vocabulary](https://github.com/drkameleon/complete-hsk-vocabulary)（MIT License）、元データ [CC-CEDICT](https://cc-cedict.org/)（CC BY-SA 4.0）。発音の判定に [pinyin-pro](https://github.com/zh-lx/pinyin-pro)（MIT License、CDN から読み込み）。日本語の問題文は本サイトで作成。

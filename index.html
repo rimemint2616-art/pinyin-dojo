@@ -57,7 +57,7 @@
 
     <p class="footnote">
       HSK（旧6級制）の各級で新しく覚える単語から、毎回ランダムに出題します。間違えた単語は、正解できるまで出やすくなります。学習の記録はこの端末のブラウザだけに保存されます。<br>
-      語彙リスト：<a href="https://github.com/drkameleon/complete-hsk-vocabulary" target="_blank" rel="noopener">complete-hsk-vocabulary</a>（MIT License）、元データ <a href="https://cc-cedict.org/" target="_blank" rel="noopener">CC-CEDICT</a>（CC BY-SA 4.0）。日本語訳は本サイト独自のものです。
+      語彙リスト：<a href="https://github.com/drkameleon/complete-hsk-vocabulary" target="_blank" rel="noopener">complete-hsk-vocabulary</a>（MIT License）、元データ <a href="https://cc-cedict.org/" target="_blank" rel="noopener">CC-CEDICT</a>（CC BY-SA 4.0）。発音の判定に <a href="https://github.com/zh-lx/pinyin-pro" target="_blank" rel="noopener">pinyin-pro</a>（MIT License）を使用。日本語訳は本サイト独自のものです。
     </p>
   </section>
 
@@ -161,6 +161,8 @@
   </div>
 </div>
 
+<!-- 漢字→ピンイン変換（発音の判定に使う。読めなくても漢字の一致で判定する） -->
+<script src="https://cdn.jsdelivr.net/npm/pinyin-pro@3.26.0/dist/index.js"></script>
 <script src="words.js"></script>
 <script src="chara.js"></script>
 <script src="app.js"></script>

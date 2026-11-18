@@ -179,7 +179,7 @@ function startSession(customDeck) {
 
 function render() {
   const q = deck[pos];
-  answered = false; hintStep = 0;
+  answered = false; hintStep = 0; voiceTries = 0;
   $("count").textContent = `${pos + 1}/${deck.length}`;
   $("bar").style.width = `${(pos / deck.length) * 100}%`;
   $("reviewChip").hidden = !q.review;
@@ -189,7 +189,7 @@ function render() {
   $("skipBtn").disabled = false;
   $("answer").value = ""; $("answer").disabled = false;
   $("heard").textContent = ""; $("heard").classList.remove("partial");
-  $("voiceNote").hidden = true;
+  $("voiceNote").hidden = true; $("voiceNote").classList.remove("retry");
   $("micBtn").disabled = false;
   $("sheet").classList.remove("show", "ok", "ng");
   $("react").hidden = true;
@@ -204,6 +204,7 @@ function renderMode() {
   $("voicePanel").hidden = !voice;
   $("checkBtn").hidden = voice;
   $("promptLabel").textContent = voice ? "中国語で発音してください" : "中国語のピンインで答えてください";
+  $("voiceTip").hidden = !(voice && deck[pos] && [...deck[pos].hanzi].length === 1);
   if (voice) { $("answer").blur(); refreshMic(); }
   else { if (listening) endListening(); $("answer").focus({ preventScroll: true }); }
 }
@@ -381,7 +382,10 @@ if (!("speechSynthesis" in window)) $("speakBtn").hidden = true;
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 const SILENCE_MS = 1200;  // 何か聞き取れた後、これだけ声が途切れたら自動で終える
 const MAX_LISTEN_MS = 8000;
+const VOICE_TRIES = 2;     // 聞き違いに備えて、不正解にする前にもう1回言い直せる
 let listening = false, rec = null, buf = [], alts = [], interimText = "", silenceTimer = 0, maxTimer = 0;
+let heardAll = new Set(); // 話している間に出た候補（途中結果・別候補も含む）
+let voiceTries = 0;
 
 function refreshMic() {
   if (listening) return;
@@ -414,7 +418,7 @@ function showHeard(text, partial) {
 function clearTimers() { clearTimeout(silenceTimer); clearTimeout(maxTimer); }
 
 function startListening() {
-  buf = []; alts = []; interimText = "";
+  buf = []; alts = []; interimText = ""; heardAll = new Set();
   showHeard("", false);
   $("voiceNote").hidden = true;
   listening = true;
@@ -436,13 +440,14 @@ function startListening() {
       const r = e.results[i];
       if (r.isFinal) { buf.push(r[0].transcript); for (let j = 1; j < r.length; j++) alts.push(r[j].transcript); }
       else interimText += r[0].transcript;
-      for (let j = 0; j < r.length; j++) fresh.push(r[j].transcript);
+      for (let j = 0; j < r.length; j++) { fresh.push(r[j].transcript); heardAll.add(r[j].transcript); }
     }
     const text = (buf.join("") + interimText).trim();
     showHeard(text, !!interimText);
     // 正解が聞こえた時点ですぐ判定する（話し終わりを待たない）
     if (deck[pos] && [text, ...fresh].some((t) => matchVoice(t, deck[pos])?.ok)) {
-      const res = judgeVoice(text, [...fresh, ...alts]);
+      if (text) heardAll.add(text);
+      const res = judgeVoice(text, [...fresh, ...heardAll]);
       endListening();
       finish("voice", text, res);
       return;
@@ -485,9 +490,23 @@ function onListenEnd(reason) {
   const text = (buf.join("") + interimText).trim();
   endListening();
   if (answered) return;
-  if (text) { finish("voice", text, judgeVoice(text, alts)); return; }
+  if (text) {
+    const res = judgeVoice(text, [...alts, ...heardAll]);
+    voiceTries++;
+    if (!res.ok && voiceTries < VOICE_TRIES) {
+      // 1回目の聞き違いは不正解にせず、聞こえた内容を見せて言い直してもらう
+      showHeard(text, false);
+      $("voiceNote").textContent = "違う音に聞こえたよ。もう一回言ってみて！";
+      $("voiceNote").classList.add("retry");
+      $("voiceNote").hidden = false;
+      return;
+    }
+    finish("voice", text, res);
+    return;
+  }
   showHeard("", false);
   const msg = VOICE_ERRORS[reason] || (reason && reason !== "aborted" ? "うまく聞き取れませんでした。もう一度どうぞ。" : "聞き取れませんでした。もう一度どうぞ。");
+  $("voiceNote").classList.remove("retry");
   $("voiceNote").textContent = msg; $("voiceNote").hidden = false;
 }
 

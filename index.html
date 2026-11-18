@@ -24,9 +24,31 @@
     <div class="stage">
       <div class="chara-wrap"><div class="chara" id="charaHome" data-mood="happy"></div></div>
       <div class="bubble">
-        <div class="say-zh">一起学习吧！</div>
-        <div class="say-ja">一緒に勉強しよう！日本語を見て、中国語で答えてね。ピンインを入力しても、声に出しても OK。</div>
+        <div class="say-zh" id="homeZh">你好！你叫什么名字？</div>
+        <div class="say-ja" id="homeJa">こんにちは！まずは名前を教えてね。</div>
       </div>
+    </div>
+
+    <!-- 名前 -->
+    <div class="user-card" id="userCard">
+      <div class="user-show" id="userShow" hidden>
+        <div class="user-hello"><span class="user-icon" aria-hidden="true">👤</span><b id="userName"></b><span>さん</span></div>
+        <button type="button" class="link" id="changeUserBtn">名前を変える</button>
+      </div>
+      <form class="user-form" id="userForm">
+        <label class="group-label" for="nameInput">名前</label>
+        <div class="name-row">
+          <input class="input name-input" id="nameInput" maxlength="20" placeholder="名前を入れてください" autocomplete="nickname" enterkeyhint="done">
+          <button type="submit" class="btn btn-primary name-save" id="nameSaveBtn">決定</button>
+        </div>
+        <div class="user-chips" id="userChips"></div>
+        <small class="name-note">テストの結果はこの名前で、この端末に保存されます。</small>
+      </form>
+    </div>
+
+    <div class="group" id="historyGroup" hidden>
+      <div class="group-label">最近の成績（<span id="historyName"></span>さん）</div>
+      <ul class="history" id="history"></ul>
     </div>
 
     <div class="group">
@@ -56,7 +78,7 @@
     </div>
 
     <p class="footnote">
-      HSK（旧6級制）の各級で新しく覚える単語から、毎回ランダムに出題します。間違えた単語は、正解できるまで出やすくなります。学習の記録はこの端末のブラウザだけに保存されます。<br>
+      HSK（旧6級制）の各級で新しく覚える単語から、毎回ランダムに出題します。間違えた単語は、正解できるまで出やすくなります。成績と学習の記録は名前ごとに、この端末のブラウザだけに保存されます。<br>
       語彙リスト：<a href="https://github.com/drkameleon/complete-hsk-vocabulary" target="_blank" rel="noopener">complete-hsk-vocabulary</a>（MIT License）、元データ <a href="https://cc-cedict.org/" target="_blank" rel="noopener">CC-CEDICT</a>（CC BY-SA 4.0）。発音の判定に <a href="https://github.com/zh-lx/pinyin-pro" target="_blank" rel="noopener">pinyin-pro</a>（MIT License）を使用。日本語訳は本サイト独自のものです。
     </p>
   </section>
@@ -133,6 +155,7 @@
     <div class="result-head">
       <div class="result-level" id="resultLevel">HSK 1級</div>
       <div class="result-score" id="score">0<small> / 0</small></div>
+      <div class="saved-note" id="savedNote"></div>
     </div>
     <div class="group-label">ふりかえり</div>
     <ul class="review" id="review"></ul>

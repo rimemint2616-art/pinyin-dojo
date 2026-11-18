@@ -45,13 +45,45 @@ const store = {
   get(k, fallback) { try { const v = localStorage.getItem(k); return v == null ? fallback : JSON.parse(v); } catch { return fallback; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
+// ===== 名前（使う人） =====
+// 1台を何人かで使えるように、記録はすべて名前ごとに分けて保存する
+let currentUser = store.get("currentUser", "");
+const userKey = () => encodeURIComponent(currentUser);
+const userList = () => store.get("users", []);
+
+function setUser(raw) {
+  const name = raw.trim().replace(/\s+/g, " ").slice(0, 20);
+  if (!name) return false;
+  const first = store.get("users", null) === null;
+  store.set("users", [name, ...userList().filter((n) => n !== name)].slice(0, 20));
+  if (first) {
+    // 名前を付ける前の学習記録は、最初の名前に引き継ぐ
+    for (const m of LEVEL_META) {
+      const old = store.get(`progress-${m.lv}`, null);
+      if (old) {
+        store.set(`progress-${encodeURIComponent(name)}-${m.lv}`, old);
+        try { localStorage.removeItem(`progress-${m.lv}`); } catch {}
+      }
+    }
+  }
+  currentUser = name;
+  store.set("currentUser", name);
+  return true;
+}
+
+// 成績の履歴（新しい順、最大200件）
+const loadHistory = () => store.get(`history-${userKey()}`, []);
+function addHistory(entry) {
+  store.set(`history-${userKey()}`, [entry, ...loadHistory()].slice(0, 200));
+}
+
 // 級ごとの記録：seen = 今の周回で出題済みの漢字、weak = 間違えた単語の重み（0になるまで出やすい）
 function loadProgress(L) {
-  const p = store.get(`progress-${L.lv}`, {});
+  const p = store.get(`progress-${userKey()}-${L.lv}`, {});
   return { seen: new Set(p.seen || []), weak: p.weak || {} };
 }
 function saveProgress(L, p) {
-  store.set(`progress-${L.lv}`, { seen: [...p.seen], weak: p.weak });
+  store.set(`progress-${userKey()}-${L.lv}`, { seen: [...p.seen], weak: p.weak });
 }
 const WEAK_ON_MISS = 2;   // 間違えると重み+2（最大4）。正解するたびに-1
 const WEAK_MAX = 4;
@@ -111,6 +143,7 @@ let size = settings.size === 30 ? 30 : 20;
 $("optTone").checked = settings.tone !== false;
 let level = LEVELS[0];
 let deck = [], pos = 0, results = [], hintStep = 0, answered = false;
+let reviewSession = false; // 「間違えた単語をもう一度」の回か
 let streak = 0, missStreak = 0; // 連続正解・連続不正解（キャラクターの反応に使う）
 
 function saveSettings() { store.set("settings", { mode, size, tone: $("optTone").checked }); }
@@ -118,7 +151,7 @@ function saveSettings() { store.set("settings", { mode, size, tone: $("optTone")
 function showScreen(id) {
   for (const s of document.querySelectorAll(".screen")) s.hidden = s.id !== id;
   if (id !== "quiz") $("sheet").classList.remove("show");
-  if (id === "home") renderLevels();
+  if (id === "home") { renderUser(); renderLevels(); }
   window.scrollTo(0, 0);
 }
 function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
@@ -144,9 +177,75 @@ function renderLevels() {
     </button>`;
   }).join("");
 }
+// ===== 名前の入力と成績 =====
+function renderUser() {
+  const has = !!currentUser;
+  $("userShow").hidden = !has;
+  $("userForm").hidden = has;
+  $("userName").textContent = currentUser;
+  if (has) {
+    $("homeZh").textContent = "欢迎！一起学习吧！";
+    $("homeJa").textContent = `${currentUser}さん、今日も一緒に勉強しよう！`;
+  } else {
+    $("homeZh").textContent = "你好！你叫什么名字？";
+    $("homeJa").textContent = "こんにちは！まずは名前を教えてね。";
+  }
+  const others = userList().filter((n) => n !== currentUser);
+  $("userChips").innerHTML = others.map((n) => `<button type="button" class="user-chip" data-user="${esc(n)}">${esc(n)}</button>`).join("");
+  renderHistory();
+}
+
+function renderHistory() {
+  const h = currentUser ? loadHistory().slice(0, 5) : [];
+  $("historyGroup").hidden = h.length === 0;
+  $("historyName").textContent = currentUser;
+  $("history").innerHTML = h.map((e) => {
+    const d = new Date(e.t);
+    const when = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    return `<li>
+      <span class="h-main">HSK ${e.lv}級${e.review ? "・復習" : ""}</span>
+      <span class="h-score">${e.ok}<small> / ${e.n}</small></span>
+      <span class="h-sub">${when}・${e.mode === "voice" ? "発音" : "入力"}</span>
+    </li>`;
+  }).join("");
+}
+
+function editUser() {
+  $("userShow").hidden = true;
+  $("userForm").hidden = false;
+  $("nameInput").value = "";
+  $("nameInput").focus();
+}
+$("changeUserBtn").addEventListener("click", editUser);
+$("userForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  if (!setUser($("nameInput").value)) { $("nameInput").focus(); return; }
+  $("nameInput").blur();
+  renderUser(); renderLevels();
+  setMood($("charaHome"), "joy");
+});
+$("userChips").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-user]");
+  if (!b) return;
+  setUser(b.dataset.user);
+  renderUser(); renderLevels();
+  setMood($("charaHome"), "happy");
+});
+
+// 名前がまだなら、入力をうながす
+function nudgeName() {
+  const card = $("userCard");
+  card.classList.remove("nudge"); void card.offsetWidth; card.classList.add("nudge");
+  card.scrollIntoView({ behavior: "smooth", block: "center" });
+  $("nameInput").focus({ preventScroll: true });
+  $("homeJa").textContent = "はじめる前に、名前を入れてね！";
+  setMood($("charaHome"), "angry");
+}
+
 $("levels").addEventListener("click", (e) => {
   const b = e.target.closest(".level");
   if (!b) return;
+  if (!currentUser) { nudgeName(); return; }
   level = LEVELS.find((L) => L.lv === Number(b.dataset.lv));
   startSession();
 });
@@ -170,6 +269,7 @@ $("optTone").addEventListener("change", saveSettings);
 
 // ===== 問題 =====
 function startSession(customDeck) {
+  reviewSession = !!customDeck;
   deck = customDeck || drawDeck(level, size);
   pos = 0; results = []; streak = 0; missStreak = 0;
   $("levelChip").textContent = `HSK ${level.lv}級`;
@@ -341,6 +441,8 @@ function showResult() {
   const misses = results.filter((r) => !r.ok);
   $("resultLevel").textContent = `HSK ${level.lv}級　${level.name}`;
   $("score").innerHTML = `${n}<small> / ${results.length}</small>`;
+  addHistory({ t: Date.now(), lv: level.lv, ok: n, n: results.length, mode, review: reviewSession });
+  $("savedNote").textContent = `${currentUser}さんの成績として保存しました`;
   const rate = n / results.length;
   const [mood, zh, ja] =
     rate === 1 ? ["joy", "全对！太厉害了！", "全問正解！すばらしい！"] :
